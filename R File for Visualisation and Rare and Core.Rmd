@@ -1,0 +1,302 @@
+a---
+title: "Bioc0023 figures"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+install.packages("BiocManager")
+install.packages("tidyverse")
+install.packages("vegan")
+install.packages("phyloseq")
+install.packages("patchwork")
+```
+```{r}
+install.packages("devtools")
+install.packages("phyloseq")
+```
+```{r}
+install.packages("vctrs")
+```
+```{r}
+install.packages("installr")
+```
+```{r}
+library(installr)
+updateR()
+```
+
+```{r}
+install.packages("tidyverse")
+devtools::install_github("microsud/microbiomeutilities")
+```
+```{r}
+
+```
+
+```{r}
+BiocManager::install("microbiome")
+```
+```{r}
+devtools::install_github("jbisanz/qiime2R")
+```
+```{r}
+library(tidyverse)
+library(qiime2R)
+library(phyloseq)
+library(patchwork)
+library(vegan)
+library(picante)
+library(microbiome)
+library(RColorBrewer)
+library(reshape)
+library(microbiomeutilities)
+```
+```{r}
+metadata<-read_tsv("bee_meta.txt")
+```
+```{r}
+feature_table<-read_qza("merge_table.qza")
+feature_table<-feature_table$data
+reads<-data.frame(colSums(feature_table))
+reads$`sample-id`<-rownames(reads)
+```
+```{r}
+ggplot(data = data.frame("total_reads" =  log2(phyloseq::sample_sums(physeq)),
+                         "observed" = phyloseq::estimate_richness(physeq, measures = "Observed")[, 1]),
+       aes(x = total_reads, y = observed)) +
+  geom_point() +
+  geom_smooth(method="lm", se = FALSE) +
+  labs(x = "\nTotal Reads", y = "Observed Richness\n")+theme_minimal()
+```
+```{r}
+physeq<-qza_to_phyloseq(features="merge_table.qza", taxonomy = "taxonomy.qza", tree = "rooted-tree.qza", metadata="bee_meta.txt")
+```
+```{r}
+ps <- phyloseq::subset_samples(physeq, phyloseq::sample_sums(physeq) > 2000)
+ps_rare <- phyloseq::rarefy_even_depth(ps, rngseed = 123, replace = FALSE)
+```
+```{r}
+alpha_rich <-microbiome::richness(ps_rare)
+alpha_dom <- microbiome::dominance(ps_rare, index = "all")
+alpha_rare <- microbiome::rarity(ps_rare, index = "all")
+alpha_core<- microbiome::core_abundance(ps_rare, detection = .1/100, prevalence = 50/100)
+alpha_even <- microbiome::evenness(ps_rare, "all")
+```
+```{r}
+shannon<-read_qza("shannon_vector.qza")
+faith<-read_qza("faith_pd_vector.qza")
+shannon<-shannon$data %>% rownames_to_column("sample-id")
+faith<-faith$data %>% rownames_to_column("sample-id")
+alpha<-metadata %>% left_join(shannon)
+alpha<-alpha %>% left_join(faith)
+```
+```{r}
+fig2a<-alpha %>%
+  filter(!is.na(shannon_entropy)) %>%
+  ggplot(aes(x=study, y=shannon_entropy, fill=study))+  geom_boxplot()+geom_jitter(size=1)+
+  xlab("study") +
+  ylab("Shannon Diversity") +
+  theme_bw()+theme(legend.position="none") 
+  
+fig2b<-alpha %>%
+  filter(!is.na(faith_pd)) %>%
+  ggplot(aes(x=study, y=faith_pd, fill=study))+  geom_boxplot()+geom_jitter(size=1)+
+  xlab("study") +
+  ylab("Faiths PD") +
+  theme_bw()+theme(legend.position="none") 
+  ylim(0,20)
+fig2plots<-(fig2a+fig2b)
+fig2plots+plot_annotation(tag_levels = 'A', 'B', title = NULL, subtitle = NULL)
+ggsave("fig2.png")
+```
+```{r}
+alpha %>%filter(!is.na(study)) %>% oneway.test(shannon_entropy~study, data= .) 
+alpha %>%filter(!is.na(study)) %>% oneway.test(faith_pd~study, data= .)
+
+library("multcompView")
+# What is the effect of the treatment on the value ?
+ANOVA = alpha %>%filter(!is.na(study)) %>% aov(shannon_entropy~study, data = .)
+
+ 
+# Tukey test to study each pair of treatment :
+TUKEY_shan <- TukeyHSD(x=ANOVA, 'study', conf.level=0.95)
+# Tuckey test representation :
+plot(TUKEY_shan , col="brown")
+
+ANOVA = alpha %>%filter(!is.na(study)) %>% aov(faith_pd~study, data = .)
+
+ 
+# Tukey test to study each pair of treatment :
+TUKEY_pd <- TukeyHSD(x=ANOVA, 'study', conf.level=0.95)
+# Tuckey test representation :
+plot(TUKEY_pd , col="blue")
+
+
+```
+```{r}
+colnames(metadata)[colnames(metadata) == 'sample-id'] <- 'SampleID'
+jac<-read_qza("jaccard_pcoa_results.qza")
+bray<-read_qza("bray_curtis_pcoa_results.qza")
+jac<-jac$data$Vectors%>%dplyr::select(SampleID, PC1, PC2)%>%left_join(metadata)
+bray<-bray$data$Vectors%>%select(SampleID, PC1, PC2)%>%left_join(metadata)
+```
+```{r}
+fig3a<-jac%>%filter(!is.na(study)) %>%ggplot(aes(x=PC1, y=PC2, color=study, shape=study)) +
+  geom_point(alpha=0.7,size=4)+theme_bw()+theme(legend.position="none")+scale_color_manual(values=c("blue", "red", "black", "grey"))
+fig3b<-bray%>%filter(!is.na(study))%>%ggplot(aes(x=PC1, y=PC2, color=study, shape=study)) +
+  geom_point(alpha=0.7,size=4)+theme_bw()+scale_color_manual(values=c("blue", "red", "black", "grey"))
+fig3plots<-fig3a + fig3b
+fig3plots+plot_annotation(tag_levels = 'A', 'B', title = NULL, subtitle = NULL)
+ggsave("fig3.png")
+```
+```{r}
+physeq<-qza_to_phyloseq(features="merge_table.qza", taxonomy = "taxonomy.qza", tree = "rooted-tree.qza", metadata="bee_meta.txt")
+
+```
+```{r}
+pseq.rel <- microbiome::transform(ps, "compositional")
+otu <- microbiome::abundances(pseq.rel)
+meta <- microbiome::meta(pseq.rel)
+```
+```{r}
+permanova <- adonis(t(otu) ~ study,
+               data = meta, permutations=999, method = "bray")
+```
+```{r}
+dist <- vegdist(t(otu))
+anova(betadisper(dist, meta$study))
+```
+```{r}
+#Dispersion test and plot
+dist <- vegdist(t(otu))
+dispr <- vegan::betadisper(dist, phyloseq::sample_data(pseq.rel)$study)
+plot(dispr, main = "Ordination Centroids and Dispersion Labeled: BC distance", sub = "")
+```
+```{r}
+SVs<-read_qza("rarefied_table.qza")$data
+SVs<-apply(SVs, 2, function(x) x/sum(x)*100)
+taxonomy<-read_qza("taxonomy.qza")$data %>% parse_taxonomy()
+taxasums<-qiime2R::summarize_taxa(SVs, taxonomy)$Genus
+tax<-t(taxasums)
+tax<-data.frame(tax)
+tax2<-rownames_to_column(tax, var="SampleID")%>%as_tibble()
+```
+```{r}
+tax3<-tax2
+```
+```{r}
+alpha2<-alpha%>%filter(!is.na(shannon_entropy))
+tax3$group<-alpha2$study
+avetax<-tax3%>%filter(!is.na(group))%>%group_by(group) %>%summarise_all(mean, na.rm=TRUE)
+avetax<-avetax[,-2]
+```
+```{r}
+avetax<-gather(avetax, key=genus, value=abundance, 2:(ncol(avetax)))
+```
+```{r}
+avetax<-avetax%>% mutate(genus=replace(genus, abundance<2, "Other")) %>% as.data.frame()
+```
+```{r}
+avetax$genus<-factor(avetax$genus)
+```
+```{r}
+fig4a<-avetax%>%ggplot(aes(x=group, y=abundance, fill=genus)) + geom_bar(stat="identity")+theme_bw()+scale_y_continuous(limits = c(0, 104), expand = c(0,0))+theme(legend.position="none")
+```
+```{r}
+fig4a<-avetax%>%ggplot(aes(x=group, y=abundance, fill=genus)) + geom_bar(stat="identity")+theme_bw()+scale_y_continuous(limits = c(0, 104), expand = c(0,0))+scale_fill_manual(values=c("#A6CEE3", "#1F78B4", "#B2DF8A", "#33A02C", "#FB9A99", "#E31A1C", "#FDBF6F", "#FF7F00" ,"#CAB2D6","#999999", "red", "grey", "blue", "firebrick"))
+ggsave("fig4a.png")
+
+```
+```{r}
+
+
+```
+```{r}
+pseq.rel <- microbiome::transform(physeq, "compositional")
+core.otu.standard <- core_members(pseq.rel, detection = 0, prevalence = 10/100)
+pseq.core <- core(pseq.rel, detection = 0, prevalence = .1)
+
+tax_table(pseq.core)[1:5, 1:7]
+core.taxa <- taxa_names(physeq)
+
+
+prevalences <- seq(.05, 1, .05)
+detections <- 10^seq(log10(1e-3), log10(0.2), length = 10)
+gray <- gray(seq(0,1,length=5))
+p <- plot_core(pseq.rel, plot.type = "heatmap", colours = rev(brewer.pal(5, "Spectral")),
+       prevalences = prevalences, detections = detections, min.prevalence = 0.1) +
+    labs(x = "Detection Threshold (Relative Abundance (%))") +
+   theme(axis.text.x = element_text(angle = 60, hjust = 1))
+show(p)
+
+
+
+```
+```{r}
+ps.m3.rel.gen <- pseq.rel %>%aggregate_taxa("Genus") %>% transform(transform = "compositional")
+p1 <- plot_core(ps.m3.rel.gen, 
+                plot.type = "heatmap", 
+                colours = rev(brewer.pal(5, "RdBu")),
+                prevalences = prevalences, 
+                detections = signif(seq(0, 1, length = 10), digits = 2), min.prevalence = .15)+
+    xlab("Detection Threshold (Relative Abundance (%))") + 
+    theme(axis.text.x = element_text(angle = 60, hjust = 1),axis.text.y = element_text(face="italic"))
+show(p1)
+help(round)
+```
+```{r}
+pseq.rare <- pseq.rel %>% aggregate_taxa("Phylum") %>% rare(detections, prevalence = 0.1, include.lowest = FALSE) %>% transform(transform = "compositional")
+
+
+p2 <- plot_core(pseq.rare, 
+                plot.type = "heatmap", 
+                colours = rev(brewer.pal(5, "RdBu")),
+                prevalences = seq(.5, 1, .5), 
+                detections = detections)+
+    xlab("Detection Threshold (Relative Abundance (%))") + 
+    theme(axis.text.x = element_text(angle = 60, hjust = 1))
+
+show(p2)
+
+print(rare_members(ps.m3.rel.gen, detection = 1/100, prevalence = 0.0025,  include.lowest = FALSE))
+```
+
+
+```{r}
+physeq2 = prune_taxa(taxa_names(physeq)[1:200], physeq)
+fig4b<-plot_tree(physeq2, nodelabf=nodeplotboot(), ladderize="left", color="Class")
+ggsave("fig4b.png")
+```
+```{r}
+ps_phylum <- phyloseq::tax_glom(physeq, "Phylum")
+phyloseq::taxa_names(ps_phylum) <- phyloseq::tax_table(ps_phylum)[, "Phylum"]
+phyloseq::otu_table(ps_phylum)[1:5, 1:5]
+```
+```{r}
+t<-phyloseq::psmelt(ps_phylum)
+```
+```{r}
+fig5a<-t%>%filter(OTU =="Proteobacteria")%>%
+ggplot(aes(study, Abundance, fill=study)) +
+  geom_boxplot(outlier.shape  = NA) +
+  geom_jitter(height = 0, width = .2) +
+  labs(x = "", y = "Abundance\n")+theme_bw() +
+  ylim(0,500000)
+fig5a
+ggsave("fig5a.png") #or pdf
+```
+```{r}
+fig5b<-t%>%filter(OTU =="Firmicutes")%>%
+ggplot(aes(study, Abundance, fill=study)) +
+  geom_boxplot(outlier.shape  = NA) +
+  geom_jitter(height = 0, width = .2) +
+  labs(x = "", y = "Abundance\n")+theme_bw() +
+  ylim(0,75000)
+fig5b
+ggsave("fig5b.png") #or pdf
+```
