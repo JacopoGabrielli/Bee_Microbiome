@@ -10,6 +10,11 @@ Bees are key pollinators for the vegetation of terrestrial ecosystems and, simil
 
 **VISIT THE WIKI FOR CLEAR GUIDANCE IN NAVIGATING THE REPOSITORY**
 
+## Acknowledgments
+
+Jacopo Gabrielli and Alexis Gkantiragas (co-authors) would like to thank Dr. Toryn Poolman for the help and advice he provided us throughout the project. Additionally, a special thanks to the other students whom we have had the chance to discuss with and who stimulated us to continuously challenge our results. 
+
+
 
 
 
